@@ -32,16 +32,11 @@ class PlayPauseCommand(Command):
     @property
     def help(self) -> str:
         return self.translator.translate(
-            "QUERY Plays tracks found for the query. If no query is given, plays or pauses current track"
+            "QUERY Plays tracks found for the query. If no query is given, replays the current track"
         )
 
     def __call__(self, arg: str, user: User) -> Optional[str]:
         if arg:
-            self.run_async(
-                self.ttclient.send_message,
-                self.translator.translate("Searching..."),
-                user,
-            )
             try:
                 track_list = self.service_manager.service.search(arg)
                 if self.config.general.send_channel_messages:
@@ -53,21 +48,40 @@ class PlayPauseCommand(Command):
                         type=2,
                     )
                 self.run_async(self.player.play, track_list)
-                return self.translator.translate("Playing {}").format(
-                    track_list[0].name
-                )
+                if self.config.general.send_channel_messages:
+                    self.run_async(
+                        self.ttclient.send_message,
+                        self.translator.translate("Playing {}").format(
+                            track_list[0].name
+                        ),
+                        type=2,
+                    )
             except errors.NothingFoundError:
-                return self.translator.translate("Nothing is found for your query")
+                if self.config.general.send_channel_messages:
+                    self.run_async(
+                        self.ttclient.send_message,
+                        self.translator.translate("Nothing is found for your query"),
+                        type=2,
+                    )
             except errors.ServiceError:
-                return self.translator.translate(
-                    "The selected service is currently unavailable"
-                )
+                if self.config.general.send_channel_messages:
+                    self.run_async(
+                        self.ttclient.send_message,
+                        self.translator.translate(
+                            "The selected service is currently unavailable"
+                        ),
+                        type=2,
+                    )
         else:
-            if self.player.state == State.Playing:
-                self.run_async(self.player.pause)
-            elif self.player.state == State.Paused:
-                self.run_async(self.player.play)
-
+                if self.config.general.send_channel_messages:
+                    self.run_async(
+                        self.ttclient.send_message,
+                        self.translator.translate(
+                            "{nickname} replayed"
+                        ).format(nickname=user.nickname),
+                        type=2,
+                    )
+                self.player.play_by_index(self.player.track_index)
 
 class PlayUrlCommand(Command):
     @property
@@ -96,7 +110,6 @@ class PlayUrlCommand(Command):
         else:
             raise errors.InvalidArgumentError
 
-
 class StopCommand(Command):
     @property
     def help(self) -> str:
@@ -115,6 +128,120 @@ class StopCommand(Command):
         else:
             return self.translator.translate("Nothing is playing")
 
+class TrackTimeCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate("Shows elapsed, remaining, and total time of the current track")
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        if self.player.state != State.Playing:
+            return self.translator.translate("Nothing is playing")
+
+        # elapsed in seconds
+        elapsed = self.player._player.time_pos or 0  
+        # total duration in seconds
+        total = self.player.get_duration() or 0  
+        remaining = total - elapsed
+
+        # helper to format time
+        def format_time(seconds: int) -> str:
+            seconds = int(seconds)
+            if seconds < 60:
+                return f"{seconds:02d}"
+            hours, remainder = divmod(seconds, 3600)
+            minutes, sec = divmod(remainder, 60)
+            if hours > 0:
+                return f"{hours}:{minutes:02d}:{sec:02d}"
+            else:
+                return f"{minutes}:{sec:02d}"
+
+        return self.translator.translate(
+            "Elapsed: {}  Remaining: {}  Total: {}"
+        ).format(
+            format_time(elapsed),
+            format_time(remaining),
+            format_time(total),
+        )
+
+class JumpToTimeCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate(
+            "Jumps to a specified time in the current track. Format: hh:mm:ss, mm:ss, or ss"
+        )
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        if self.player.state == State.Stopped:
+            return self.translator.translate("Nothing is playing")
+
+        if not arg:
+            raise errors.InvalidArgumentError
+
+        # parse time string
+        try:
+            parts = [int(p) for p in arg.split(":")]
+            if len(parts) == 3:
+                seconds = parts[0]*3600 + parts[1]*60 + parts[2]
+            elif len(parts) == 2:
+                seconds = parts[0]*60 + parts[1]
+            elif len(parts) == 1:
+                seconds = parts[0]
+            else:
+                raise ValueError()
+        except ValueError:
+            raise errors.InvalidArgumentError
+
+        # check if time is within track duration
+        total_duration = self.player.get_duration() or 0
+        if seconds > total_duration:
+            return self.translator.translate("Specified time exceeds track duration")
+
+        # jump to position
+        try:
+            self.player._player.seek(seconds, reference="absolute")
+        except SystemError:
+            self.player.stop()
+            return self.translator.translate("Failed to jump to specified time")
+
+        # optionally send message to channel
+        if self.config.general.send_channel_messages:
+            self.run_async(
+                self.ttclient.send_message,
+                self.translator.translate(
+                    "{nickname} jumped to {time}"
+                ).format(nickname=user.nickname, time=arg),
+                type=2,
+            )
+
+class PauseResumeCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate("Pauses or resumes playback")
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        if self.player.state == State.Playing:
+            if self.config.general.send_channel_messages:
+                self.run_async(
+                    self.ttclient.send_message,
+                    self.translator.translate(
+                        "{nickname} paused the playback"
+                    ).format(nickname=user.nickname),
+                    type=2,
+                )
+            self.run_async(self.player.pause)
+        elif self.player.state == State.Paused:
+            if self.config.general.send_channel_messages:
+                self.run_async(
+                    self.ttclient.send_message,
+                    self.translator.translate(
+                        "{nickname} resumed the playback"
+                    ).format(nickname=user.nickname),
+                    type=2,
+                )
+            self.run_async(self.player.play)
+        else:
+            return self.translator.translate("Nothing is playing")
+
 
 class VolumeCommand(Command):
     @property
@@ -129,6 +256,13 @@ class VolumeCommand(Command):
                 volume = int(arg)
                 if 0 <= volume <= self.config.player.max_volume:
                     self.player.set_volume(int(arg))
+                if self.config.general.send_channel_messages:
+                    self.ttclient.send_message(
+                        self.translator.translate(
+                            "{nickname} changed the volume to {volume}"
+                        ).format(nickname=user.nickname, volume=arg),
+                        type=2,
+                    )
                 else:
                     raise ValueError
             except ValueError:
@@ -150,10 +284,26 @@ class SeekBackCommand(Command):
         if arg:
             try:
                 self.player.seek_back(float(arg))
+                if self.config.general.send_channel_messages:
+                    self.run_async(
+                        self.ttclient.send_message,
+                        self.translator.translate(
+                            "{nickname} skipped backward {seek} seconds"
+                        ).format(nickname=user.nickname, seek=arg),
+                        type=2,
+                    )
             except ValueError:
                 raise errors.InvalidArgumentError
         else:
             self.player.seek_back()
+            if self.config.general.send_channel_messages:
+                self.run_async(
+                    self.ttclient.send_message,
+                    self.translator.translate(
+                        "{nickname} skipped backward by default seconds"
+                    ).format(nickname=user.nickname),
+                    type=2,
+                )
 
 
 class SeekForwardCommand(Command):
@@ -169,10 +319,26 @@ class SeekForwardCommand(Command):
         if arg:
             try:
                 self.player.seek_forward(float(arg))
+                if self.config.general.send_channel_messages:
+                    self.run_async(
+                        self.ttclient.send_message,
+                        self.translator.translate(
+                            "{nickname} skipped forward {seek} seconds"
+                        ).format(nickname=user.nickname, seek=arg),
+                        type=2,
+                    )
             except ValueError:
                 raise errors.InvalidArgumentError
         else:
             self.player.seek_forward()
+            if self.config.general.send_channel_messages:
+                self.run_async(
+                    self.ttclient.send_message,
+                    self.translator.translate(
+                        "{nickname} skipped forward by default seconds"
+                    ).format(nickname=user.nickname),
+                    type=2,
+                )
 
 
 class NextTrackCommand(Command):
@@ -183,9 +349,14 @@ class NextTrackCommand(Command):
     def __call__(self, arg: str, user: User) -> Optional[str]:
         try:
             self.player.next()
-            return self.translator.translate("Playing {}").format(
-                self.player.track.name
-            )
+            if self.config.general.send_channel_messages:
+                self.run_async(
+                    self.ttclient.send_message,
+                    self.translator.translate("Playing {}").format(
+                        self.player.track.name
+                    ),
+                    type=2,
+                )
         except errors.NoNextTrackError:
             return self.translator.translate("No next track")
         except errors.NothingIsPlayingError:
@@ -200,9 +371,14 @@ class PreviousTrackCommand(Command):
     def __call__(self, arg: str, user: User) -> Optional[str]:
         try:
             self.player.previous()
-            return self.translator.translate("Playing {}").format(
-                self.player.track.name
-            )
+            if self.config.general.send_channel_messages:
+                self.run_async(
+                    self.ttclient.send_message,
+                    self.translator.translate("Playing {}").format(
+                        self.player.track.name
+                    ),
+                    type=2,
+                )
         except errors.NoPreviousTrackError:
             return self.translator.translate("No previous track")
         except errors.NothingIsPlayingError:
@@ -347,9 +523,14 @@ class SelectTrackCommand(Command):
                 else:
                     return self.translator.translate("Incorrect number")
                 self.player.play_by_index(index)
-                return self.translator.translate("Playing {} {}").format(
-                    arg, self.player.track.name
-                )
+                if self.config.general.send_channel_messages:
+                    self.run_async(
+                        self.ttclient.send_message,
+                        self.translator.translate("Playing {} {}").format(
+                            arg, self.player.track.name
+                        ),
+                        type=2,
+                    )
             except errors.IncorrectTrackIndexError:
                 return self.translator.translate("Out of list")
             except errors.NothingIsPlayingError:
@@ -358,9 +539,14 @@ class SelectTrackCommand(Command):
                 raise errors.InvalidArgumentError
         else:
             if self.player.state != State.Stopped:
-                return self.translator.translate("Playing {} {}").format(
-                    self.player.track_index + 1, self.player.track.name
-                )
+                if self.config.general.send_channel_messages:
+                    self.run_async(
+                        self.ttclient.send_message,
+                        self.translator.translate("Playing {} {}").format(
+                            self.player.track_index + 1, self.player.track.name
+                        ),
+                        type=2,
+                    )
             else:
                 return self.translator.translate("Nothing is playing")
 
@@ -380,6 +566,13 @@ class SpeedCommand(Command):
         else:
             try:
                 self.player.set_speed(float(arg))
+                if self.config.general.send_channel_messages:
+                    self.ttclient.send_message(
+                        self.translator.translate(
+                            "{nickname} changed the speed to {speed}"
+                        ).format(nickname=user.nickname, speed=arg),
+                        type=2,
+                    )
             except ValueError:
                 raise errors.InvalidArgumentError()
 

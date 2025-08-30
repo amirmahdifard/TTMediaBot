@@ -41,7 +41,7 @@ class Player:
         self.track: Track = Track()
         self.track_index: int = -1
         self.state = State.Stopped
-        self.mode = Mode.TrackList
+        self.mode = Mode.SingleTrack
         self.volume = self.config.default_volume
 
     def initialize(self) -> None:
@@ -259,14 +259,14 @@ class Player:
     def on_end_file(self, event: mpv.MpvEvent) -> None:
         if self.state == State.Playing and self._player.idle_active:
             if self.mode == Mode.SingleTrack or self.track.type == TrackType.Direct:
-                self.stop()
+                self.pause()
             elif self.mode == Mode.RepeatTrack:
                 self.play_by_index(self.track_index)
             else:
                 try:
                     self.next()
                 except errors.NoNextTrackError:
-                    self.stop()
+                    self.pause()
 
     def on_metadata_update(self, name: str, value: Any) -> None:
         if self.state == State.Playing and (
