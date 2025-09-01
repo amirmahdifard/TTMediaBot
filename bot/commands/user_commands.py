@@ -37,16 +37,16 @@ class PlayPauseCommand(Command):
 
     def __call__(self, arg: str, user: User) -> Optional[str]:
         if arg:
+            if self.config.general.send_channel_messages:
+                self.run_async(
+                    self.ttclient.send_message,
+                    self.translator.translate(
+                        "{nickname} requested {request}"
+                    ).format(nickname=user.nickname, request=arg),
+                    type=2,
+                )
             try:
                 track_list = self.service_manager.service.search(arg)
-                if self.config.general.send_channel_messages:
-                    self.run_async(
-                        self.ttclient.send_message,
-                        self.translator.translate(
-                            "{nickname} requested {request}"
-                        ).format(nickname=user.nickname, request=arg),
-                        type=2,
-                    )
                 self.run_async(self.player.play, track_list)
                 if self.config.general.send_channel_messages:
                     self.run_async(
@@ -134,7 +134,7 @@ class TrackTimeCommand(Command):
         return self.translator.translate("Shows elapsed, remaining, and total time of the current track")
 
     def __call__(self, arg: str, user: User) -> Optional[str]:
-        if self.player.state != State.Playing:
+        if self.player.state == State.Stopped:
             return self.translator.translate("Nothing is playing")
 
         # elapsed in seconds
@@ -268,8 +268,9 @@ class VolumeCommand(Command):
             except ValueError:
                 raise errors.InvalidArgumentError
         else:
-            return str(self.player.volume)
-
+            return self.translator.translate("Current volume: {}").format(
+                (self.player.volume)
+            )
 
 class SeekBackCommand(Command):
     @property
