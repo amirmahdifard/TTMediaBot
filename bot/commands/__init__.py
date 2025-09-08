@@ -35,7 +35,7 @@ class CommandProcessor:
         self.commands_dict = {
             "h": user_commands.HelpCommand,
             "a": user_commands.AboutCommand,
-            "p": user_commands.PlayPauseCommand,
+            "p": user_commands.PlayReplayCommand,
             "x": user_commands.PauseResumeCommand,
             "u": user_commands.PlayUrlCommand,
             "w": user_commands.ServiceCommand,

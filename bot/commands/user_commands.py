@@ -27,8 +27,7 @@ class AboutCommand(Command):
     def __call__(self, arg: str, user: User) -> Optional[str]:
         return app_vars.client_name + "\n" + app_vars.about_text(self.translator)
 
-
-class PlayPauseCommand(Command):
+class PlayReplayCommand(Command):
     @property
     def help(self) -> str:
         return self.translator.translate(
@@ -256,13 +255,13 @@ class VolumeCommand(Command):
                 volume = int(arg)
                 if 0 <= volume <= self.config.player.max_volume:
                     self.player.set_volume(int(arg))
-                if self.config.general.send_channel_messages:
-                    self.ttclient.send_message(
-                        self.translator.translate(
-                            "{nickname} changed the volume to {volume}"
-                        ).format(nickname=user.nickname, volume=arg),
-                        type=2,
-                    )
+                    if self.config.general.send_channel_messages:
+                        self.ttclient.send_message(
+                            self.translator.translate(
+                                "{nickname} changed the volume to {volume}"
+                            ).format(nickname=user.nickname, volume=arg),
+                            type=2,
+                        )
                 else:
                     raise ValueError
             except ValueError:
@@ -550,7 +549,6 @@ class SelectTrackCommand(Command):
                     )
             else:
                 return self.translator.translate("Nothing is playing")
-
 
 class SpeedCommand(Command):
     @property

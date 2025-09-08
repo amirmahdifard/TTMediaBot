@@ -16,7 +16,6 @@ from bot.sound_devices import SoundDevice, SoundDeviceType
 if TYPE_CHECKING:
     from bot import Bot
 
-
 class Player:
     def __init__(self, bot: Bot):
         self.config = bot.config.player
