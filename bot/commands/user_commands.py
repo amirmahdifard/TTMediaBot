@@ -109,6 +109,7 @@ class PlayUrlCommand(Command):
         else:
             raise errors.InvalidArgumentError
 
+
 class StopCommand(Command):
     @property
     def help(self) -> str:
@@ -432,7 +433,8 @@ class ServiceCommand(Command):
     @property
     def help(self) -> str:
         return self.translator.translate(
-            "SERVICE Selects the service to play from, sv SERVICE h returns additional help. If no service is specified, the current service and a list of available services are displayed"
+            "SERVICE Selects the service to play from, sv SERVICE h returns additional help. "
+            "If no service is specified, the current service and a list of available services are displayed"
         )
 
     def __call__(self, arg: str, user: User) -> Optional[str]:
@@ -451,9 +453,15 @@ class ServiceCommand(Command):
                         return self.translator.translate(
                             "Current service: {}\nWarning: {}"
                         ).format(service.name, service.warning_message)
-                    return self.translator.translate("Current service: {}").format(
-                        service.name
-                    )
+
+                    if self.config.general.send_channel_messages:
+                        self.ttclient.send_message(
+                            self.translator.translate(
+                                "{nickname} set the service to {servicename}"
+                            ).format(nickname=user.nickname, servicename=service.name),
+                            type=2,
+                        )
+
                 elif not service.is_enabled:
                     if service.error_message:
                         return self.translator.translate(
@@ -496,13 +504,14 @@ class ServiceCommand(Command):
                 )
             else:
                 services.append(service.name)
-        help = self.translator.translate(
-            "Current service: {current_service}\nAvailable:\n{available_services}\nsend sv SERVICE h for additional help"
+        help_text = self.translator.translate(
+            "Current service: {current_service}\nAvailable:\n{available_services}\n"
+            "send sv SERVICE h for additional help"
         ).format(
             current_service=self.service_manager.service.name,
             available_services="\n".join(services),
         )
-        return help
+        return help_text
 
 
 class SelectTrackCommand(Command):

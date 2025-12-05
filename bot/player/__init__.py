@@ -61,6 +61,18 @@ class Player:
         self._player.terminate()
         logging.debug("Player closed")
 
+    def _sanitize_track(self, track: Track) -> Optional[Track]:
+        # Fix None values that cause crashes
+        if track is None:
+            return None
+        if track.url is None:
+            return None
+        if track.name is None:
+            track.name = "Unknown"
+        if track.format is None or track.format.strip() == "":
+            track.format = "mp3"
+        return track
+
     def play(
         self,
         tracks: Optional[List[Track]] = None,
@@ -68,16 +80,34 @@ class Player:
     ) -> None:
         if tracks != None:
             self.track_list = tracks
+
+            # Sanitize all tracks
+            fixed_list = []
+            for t in self.track_list:
+                clean = self._sanitize_track(t)
+                if clean:
+                    fixed_list.append(clean)
+
+            self.track_list = fixed_list
+
+            if len(self.track_list) == 0:
+                raise errors.NoNextTrackError("No playable tracks after sanitizing")
+
             if not start_track_index and self.mode == Mode.Random:
                 self.shuffle(True)
                 self.track_index = self._index_list[0]
                 self.track = self.track_list[self.track_index]
             else:
                 self.track_index = start_track_index if start_track_index else 0
-                self.track = tracks[self.track_index]
+                self.track = self.track_list[self.track_index]
+
+            # sanitize active track
+            self.track = self._sanitize_track(self.track)
+
             self._play(self.track.url)
         else:
             self._player.pause = False
+
         self._player.volume = self.volume
         self.state = State.Playing
 
@@ -150,11 +180,11 @@ class Player:
             if self.mode == Mode.RepeatTrackList:
                 self.play_by_index(len(self.track_list) - 1)
             else:
-                raise errors.NoPreviousTrackError
+                raise errors.NoPreviousTrackError()
 
     def play_by_index(self, index: int) -> None:
         if index < len(self.track_list) and index >= (0 - len(self.track_list)):
-            self.track = self.track_list[index]
+            self.track = self._sanitize_track(self.track_list[index])
             self.track_index = self.track_list.index(self.track)
             self._play(self.track.url)
             self.state = State.Playing
@@ -200,14 +230,6 @@ class Player:
 
     def get_duration(self) -> float:
         return self._player.duration
-
-    """def get_position(self) -> float:
-        return self._player.time_pos
-
-    def set_position(self, arg: float) -> None:
-        if arg < 0:
-            raise errors.IncorrectPositionError()
-        self._player.seek(arg, reference="absolute")"""
 
     def get_output_devices(self) -> List[SoundDevice]:
         devices: List[SoundDevice] = []

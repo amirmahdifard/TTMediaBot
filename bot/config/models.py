@@ -72,11 +72,16 @@ class YamModel(BaseModel):
     token: str = ""
 
 
+class ApModel(BaseModel):
+    enabled: bool = True
+
+
 class ServicesModel(BaseModel):
     default_service: str = "vk"
     vk: VkModel = VkModel()
     yam: YamModel = YamModel()
     yt: YtModel = YtModel()
+    ap: ApModel = ApModel()
 
 
 class LoggerModel(BaseModel):

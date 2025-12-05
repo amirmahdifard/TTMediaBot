@@ -35,9 +35,15 @@ class Track:
 
     def download(self, directory: str) -> str:
         service: Service = get_service_by_name(self.service)
-        file_name = self.name + "." + self.format
+
+        # Ensure name and format are strings to avoid NoneType errors
+        safe_name = self.name if self.name else "Unknown"
+        safe_format = self.format if self.format else "mp3"
+
+        file_name = safe_name + "." + safe_format
         file_name = utils.clean_file_name(file_name)
         file_path = os.path.join(directory, file_name)
+
         service.download(self, file_path)
         return file_path
 
