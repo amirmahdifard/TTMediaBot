@@ -16,6 +16,7 @@ from bot.sound_devices import SoundDevice, SoundDeviceType
 if TYPE_CHECKING:
     from bot import Bot
 
+
 class Player:
     def __init__(self, bot: Bot):
         self.config = bot.config.player
@@ -42,6 +43,7 @@ class Player:
         self.state = State.Stopped
         self.mode = Mode.SingleTrack
         self.volume = self.config.default_volume
+        self.pitch = 1.0
 
     def initialize(self) -> None:
         logging.debug("Initializing player")
@@ -61,18 +63,6 @@ class Player:
         self._player.terminate()
         logging.debug("Player closed")
 
-    def _sanitize_track(self, track: Track) -> Optional[Track]:
-        # Fix None values that cause crashes
-        if track is None:
-            return None
-        if track.url is None:
-            return None
-        if track.name is None:
-            track.name = "Unknown"
-        if track.format is None or track.format.strip() == "":
-            track.format = "mp3"
-        return track
-
     def play(
         self,
         tracks: Optional[List[Track]] = None,
@@ -80,34 +70,16 @@ class Player:
     ) -> None:
         if tracks != None:
             self.track_list = tracks
-
-            # Sanitize all tracks
-            fixed_list = []
-            for t in self.track_list:
-                clean = self._sanitize_track(t)
-                if clean:
-                    fixed_list.append(clean)
-
-            self.track_list = fixed_list
-
-            if len(self.track_list) == 0:
-                raise errors.NoNextTrackError("No playable tracks after sanitizing")
-
             if not start_track_index and self.mode == Mode.Random:
                 self.shuffle(True)
                 self.track_index = self._index_list[0]
                 self.track = self.track_list[self.track_index]
             else:
                 self.track_index = start_track_index if start_track_index else 0
-                self.track = self.track_list[self.track_index]
-
-            # sanitize active track
-            self.track = self._sanitize_track(self.track)
-
+                self.track = tracks[self.track_index]
             self._play(self.track.url)
         else:
             self._player.pause = False
-
         self._player.volume = self.volume
         self.state = State.Playing
 
@@ -180,11 +152,11 @@ class Player:
             if self.mode == Mode.RepeatTrackList:
                 self.play_by_index(len(self.track_list) - 1)
             else:
-                raise errors.NoPreviousTrackError()
+                raise errors.NoPreviousTrackError
 
     def play_by_index(self, index: int) -> None:
         if index < len(self.track_list) and index >= (0 - len(self.track_list)):
-            self.track = self._sanitize_track(self.track_list[index])
+            self.track = self.track_list[index]
             self.track_index = self.track_list.index(self.track)
             self._play(self.track.url)
             self.state = State.Playing
@@ -201,6 +173,32 @@ class Player:
                 time.sleep(self.config.volume_fading_interval)
         else:
             self._player.volume = volume
+
+    def get_pitch(self) -> float:
+        return self.pitch
+
+    def set_pitch(self, arg: float) -> None:
+        if arg < 0.25 or arg > 4.0:
+            raise ValueError("Pitch must be between 0.25 and 4.0")
+        
+        self.pitch = arg
+        
+        if arg == 1.0:
+            # Reset filters to normal
+            self._player.af = ""
+        else:
+            # Method 1: Rubberband (Best quality, requires librubberband)
+            # Method 2: Scaletempo (Built-in, changes pitch by shifting speed/tempo)
+            # We will use the 'scaletempo' approach because it's more widely supported
+            # We set the speed to the pitch factor, then use scaletempo to 
+            # keep the tempo at 1.0. This results in a pitch change.
+            
+            # However, since you already have a SpeedCommand, we should use 
+            # the specialized 'rubberband' filter if possible:
+            self._player.af = f"rubberband=pitch-scale={arg}"
+            
+            # If you want to try the universal FFmpeg fallback instead:
+            # self._player.af = f"lavfi=[asetrate=48000*{arg},aresample=48000,atempo=1/{arg}]"
 
     def get_speed(self) -> float:
         return self._player.speed
@@ -230,6 +228,14 @@ class Player:
 
     def get_duration(self) -> float:
         return self._player.duration
+
+    """def get_position(self) -> float:
+        return self._player.time_pos
+
+    def set_position(self, arg: float) -> None:
+        if arg < 0:
+            raise errors.IncorrectPositionError()
+        self._player.seek(arg, reference="absolute")"""
 
     def get_output_devices(self) -> List[SoundDevice]:
         devices: List[SoundDevice] = []
