@@ -41,8 +41,9 @@ class Player:
         self.track: Track = Track()
         self.track_index: int = -1
         self.state = State.Stopped
-        self.mode = Mode.TrackList
+        self.mode = Mode.SingleTrack
         self.volume = self.config.default_volume
+        self.pitch = 1.0
 
     def initialize(self) -> None:
         logging.debug("Initializing player")
@@ -173,6 +174,32 @@ class Player:
         else:
             self._player.volume = volume
 
+    def get_pitch(self) -> float:
+        return self.pitch
+
+    def set_pitch(self, arg: float) -> None:
+        if arg < 0.25 or arg > 4.0:
+            raise ValueError("Pitch must be between 0.25 and 4.0")
+        
+        self.pitch = arg
+        
+        if arg == 1.0:
+            # Reset filters to normal
+            self._player.af = ""
+        else:
+            # Method 1: Rubberband (Best quality, requires librubberband)
+            # Method 2: Scaletempo (Built-in, changes pitch by shifting speed/tempo)
+            # We will use the 'scaletempo' approach because it's more widely supported
+            # We set the speed to the pitch factor, then use scaletempo to 
+            # keep the tempo at 1.0. This results in a pitch change.
+            
+            # However, since you already have a SpeedCommand, we should use 
+            # the specialized 'rubberband' filter if possible:
+            self._player.af = f"rubberband=pitch-scale={arg}"
+            
+            # If you want to try the universal FFmpeg fallback instead:
+            # self._player.af = f"lavfi=[asetrate=48000*{arg},aresample=48000,atempo=1/{arg}]"
+
     def get_speed(self) -> float:
         return self._player.speed
 
@@ -259,14 +286,14 @@ class Player:
     def on_end_file(self, event: mpv.MpvEvent) -> None:
         if self.state == State.Playing and self._player.idle_active:
             if self.mode == Mode.SingleTrack or self.track.type == TrackType.Direct:
-                self.stop()
+                self.pause()
             elif self.mode == Mode.RepeatTrack:
                 self.play_by_index(self.track_index)
             else:
                 try:
                     self.next()
                 except errors.NoNextTrackError:
-                    self.stop()
+                    self.pause()
 
     def on_metadata_update(self, name: str, value: Any) -> None:
         if self.state == State.Playing and (

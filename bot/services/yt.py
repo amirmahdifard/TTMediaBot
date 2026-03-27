@@ -11,7 +11,6 @@ from yt_dlp.downloader import get_suitable_downloader
 from youtubesearchpython import VideosSearch
 
 from bot.config.models import YtModel
-
 from bot.player.enums import TrackType
 from bot.player.track import Track
 from bot.services import Service as _Service
@@ -40,7 +39,7 @@ class YtService(_Service):
 
         if self.config.cookiefile_path and os.path.isfile(self.config.cookiefile_path):
             self._ydl_config |= {"cookiefile": self.config.cookiefile_path}
-            
+
     def download(self, track: Track, file_path: str) -> None:
         info = track.extra_info
         if not info:
@@ -59,54 +58,63 @@ class YtService(_Service):
         if not (url or extra_info):
             raise errors.InvalidArgumentError()
         with YoutubeDL(self._ydl_config) as ydl:
-            if not extra_info:
-                info = ydl.extract_info(url, process=False)
-            else:
-                info = extra_info
-            info_type = None
-            if "_type" in info:
-                info_type = info["_type"]
-            if info_type == "url" and not info["ie_key"]:
+            info = extra_info or ydl.extract_info(url, process=False)
+            info_type = info.get("_type", None)
+
+            if info_type == "url" and not info.get("ie_key"):
                 return self.get(info["url"], process=False)
+
             elif info_type == "playlist":
                 tracks: List[Track] = []
-                for entry in info["entries"]:
-                    data = self.get("", extra_info=entry, process=False)
-                    tracks += data
+                for entry in info.get("entries", []):
+                    tracks += self.get("", extra_info=entry, process=False)
                 return tracks
+
             if not process:
+                track_name = info.get("title") or "Unknown"
+                uploader = info.get("uploader")
+                if uploader:
+                    track_name += f" - {uploader}"
                 return [
-                    Track(service=self.name, extra_info=info, type=TrackType.Dynamic)
+                    Track(service=self.name, extra_info=info, name=track_name, type=TrackType.Dynamic)
                 ]
+
             try:
                 stream = ydl.process_ie_result(info)
             except Exception:
                 raise errors.ServiceError()
-            if "url" in stream:
-                url = stream["url"]
-            else:
+
+            url = stream.get("url")
+            if not url:
                 raise errors.ServiceError()
-            title = stream["title"]
-            if "uploader" in stream:
-                title += " - {}".format(stream["uploader"])
-            format = stream["ext"]
-            if "is_live" in stream and stream["is_live"]:
-                type = TrackType.Live
-            else:
-                type = TrackType.Default
+
+            title = stream.get("title") or "Unknown"
+            uploader = stream.get("uploader")
+            if uploader:
+                title += f" - {uploader}"
+
+            format = stream.get("ext") or "mp3"
+            type = TrackType.Live if stream.get("is_live") else TrackType.Default
+
             return [
-                Track(service=self.name, url=url, name=title, format=format, type=type, extra_info=stream)
+                Track(
+                    service=self.name,
+                    url=url,
+                    name=title,
+                    format=format,
+                    type=type,
+                    extra_info=stream
+                )
             ]
 
     def search(self, query: str) -> List[Track]:
         search = VideosSearch(query, limit=300).result()
-        if search["result"]:
+        if search.get("result"):
             tracks: List[Track] = []
             for video in search["result"]:
-                track = Track(
-                    service=self.name, url=video["link"], type=TrackType.Dynamic
+                tracks.append(
+                    Track(service=self.name, url=video.get("link") or "", type=TrackType.Dynamic)
                 )
-                tracks.append(track)
             return tracks
         else:
             raise errors.NothingFoundError("")

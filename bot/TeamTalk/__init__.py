@@ -147,7 +147,7 @@ class TeamTalk:
         if self.config.status:
             return self.config.status
         else:
-            return self.translator.translate('Send "h" for help')
+            return self.translator.translate('')
 
     def send_message(
         self, text: str, user: Optional[User] = None, type: int = 1

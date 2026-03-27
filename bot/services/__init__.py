@@ -45,6 +45,7 @@ class Service(ABC):
 from bot.services.vk import VkService
 from bot.services.yam import YamService
 from bot.services.yt import YtService
+from bot.services.ap import ApService
 
 
 class ServiceManager:
@@ -54,6 +55,7 @@ class ServiceManager:
             "vk": VkService(bot, self.config.vk),
             "yam": YamService(bot, self.config.yam),
             "yt": YtService(bot, self.config.yt),
+            "ap": ApService(bot, self.config.ap),
         }
         self.service: Service = self.services[self.config.default_service]
         self.fallback_service = app_vars.fallback_service

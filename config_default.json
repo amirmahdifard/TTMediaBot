@@ -16,8 +16,8 @@
     "player": {
         "default_volume": 50,
         "max_volume": 100,
-        "volume_fading": true,
-        "volume_fading_interval": 0.025,
+        "volume_fading": false,
+        "volume_fading_interval": 0.115,
         "seek_step": 5,
         "player_options": {}
     },
@@ -26,7 +26,7 @@
         "tcp_port": 10333,
         "udp_port": 10333,
         "encrypted": false,
-        "nickname": "TTMediaBot",
+        "nickname": "AudioPlayer",
         "status": "",
         "gender": "n",
         "username": "",
@@ -49,13 +49,16 @@
         }
     },
     "services": {
-        "default_service": "vk",
+        "default_service": "yt",
         "vk": {
-            "enabled": true,
+            "enabled": false,
             "token": ""
         },
+        "ap": {
+            "enabled": true
+        },
         "yam": {
-            "enabled": true,
+            "enabled": false,
             "token": ""
         },
         "yt": {
